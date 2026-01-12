@@ -7,14 +7,15 @@ class ImageManager {
     if (!asset) {
       return;
     }
+    this.preloadImageUrl(getAssetUrlForKind(asset, kind));
+  }
 
-    const url = getAssetUrlForKind(asset, kind);
-    if (!url) {
+  preloadImageUrl(src: string | undefined) {
+    if (!src) {
       return;
     }
-
     const img = new Image();
-    img.src = url;
+    img.src = src;
   }
 
   cancel(asset: AssetResponseDto | undefined, kind: ImageKind | 'all' = 'preview') {

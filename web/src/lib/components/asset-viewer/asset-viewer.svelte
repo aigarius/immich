@@ -201,12 +201,30 @@
 
   let nextPreloader: AdaptiveImageLoader | undefined;
   let previousPreloader: AdaptiveImageLoader | undefined;
+  let nextPreviewUrl = $state<string | undefined>();
+  let previousPreviewUrl = $state<string | undefined>();
 
-  const startPreloader = (asset: AssetResponseDto | undefined) => {
+  const setPreviewUrl = (direction: 'next' | 'previous', url: string | undefined) => {
+    if (direction === 'next') {
+      nextPreviewUrl = url;
+    } else {
+      previousPreviewUrl = url;
+    }
+  };
+
+  const startPreloader = (asset: AssetResponseDto | undefined, direction: 'next' | 'previous') => {
     if (!asset) {
       return;
     }
-    const loader = new AdaptiveImageLoader(asset, undefined, undefined, loadImage);
+    const loader = new AdaptiveImageLoader(
+      asset,
+      undefined,
+      {
+        currentZoomFn: () => 1,
+        onQualityUpgrade: (url) => setPreviewUrl(direction, url),
+      },
+      loadImage,
+    );
     loader.start();
     return loader;
   };
@@ -214,14 +232,17 @@
   const destroyPreviousPreloader = () => {
     previousPreloader?.destroy();
     previousPreloader = undefined;
+    previousPreviewUrl = undefined;
   };
 
   const destroyNextPreloader = () => {
     nextPreloader?.destroy();
     nextPreloader = undefined;
+    nextPreviewUrl = undefined;
   };
 
   const cancelPreloadsBeforeNavigation = (direction: 'previous' | 'next') => {
+    setPreviewUrl(direction, undefined);
     if (direction === 'next') {
       destroyPreviousPreloader();
       return;
@@ -236,22 +257,30 @@
     const shouldDestroyPrevious = movedForward || !movedBackward;
     const shouldDestroyNext = movedBackward || !movedForward;
 
-    if (shouldDestroyPrevious) {
-      destroyPreviousPreloader();
-    }
-
-    if (shouldDestroyNext) {
-      destroyNextPreloader();
-    }
-
     if (movedForward) {
-      nextPreloader = startPreloader(newCursor.nextAsset);
+      // When moving forward: old next becomes current, shift preview URLs
+      const oldNextUrl = nextPreviewUrl;
+      destroyPreviousPreloader();
+      previousPreviewUrl = oldNextUrl;
+      destroyNextPreloader();
+      nextPreloader = startPreloader(newCursor.nextAsset, 'next');
     } else if (movedBackward) {
-      previousPreloader = startPreloader(newCursor.previousAsset);
+      // When moving backward: old previous becomes current, shift preview URLs
+      const oldPreviousUrl = previousPreviewUrl;
+      destroyNextPreloader();
+      nextPreviewUrl = oldPreviousUrl;
+      destroyPreviousPreloader();
+      previousPreloader = startPreloader(newCursor.previousAsset, 'previous');
     } else {
-      // Non-adjacent navigation (e.g., slideshow random)
-      previousPreloader = startPreloader(newCursor.previousAsset);
-      nextPreloader = startPreloader(newCursor.nextAsset);
+      // Non-adjacent navigation (e.g., slideshow random) - clear everything
+      if (shouldDestroyPrevious) {
+        destroyPreviousPreloader();
+      }
+      if (shouldDestroyNext) {
+        destroyNextPreloader();
+      }
+      previousPreloader = startPreloader(newCursor.previousAsset, 'previous');
+      nextPreloader = startPreloader(newCursor.nextAsset, 'next');
     }
   };
 
@@ -448,10 +477,10 @@
     if (!lastCursor && cursor) {
       // "first time" load, start preloads
       if (cursor.nextAsset) {
-        nextPreloader = startPreloader(cursor.nextAsset);
+        nextPreloader = startPreloader(cursor.nextAsset, 'next');
       }
       if (cursor.previousAsset) {
-        previousPreloader = startPreloader(cursor.previousAsset);
+        previousPreloader = startPreloader(cursor.previousAsset, 'previous');
       }
     }
     lastCursor = cursor;
@@ -565,7 +594,13 @@
   <!-- Asset Viewer -->
   <div class="z-[-1] relative col-start-1 col-span-4 row-start-1 row-span-full">
     {#if viewerKind === 'StackPhotoViewer'}
-      <PhotoViewer bind:zoomToggle bind:copyImage cursor={{ ...cursor, current: previewStackedAsset! }} {sharedLink} />
+      <PhotoViewer
+        bind:zoomToggle
+        bind:copyImage
+        cursor={{ ...cursor, current: previewStackedAsset! }}
+        {sharedLink}
+        onSwipe={(direction) => navigateAsset(direction === 'left' ? 'previous' : 'next')}
+      />
     {:else if viewerKind === 'StackVideoViewer'}
       <VideoViewer
         assetId={previewStackedAsset!.id}
@@ -595,7 +630,13 @@
     {:else if viewerKind === 'CropArea'}
       <CropArea {asset} />
     {:else if viewerKind === 'PhotoViewer'}
-      <PhotoViewer bind:zoomToggle bind:copyImage {cursor} {sharedLink} />
+      <PhotoViewer
+        bind:zoomToggle
+        bind:copyImage
+        {cursor}
+        {sharedLink}
+        onSwipe={(direction) => navigateAsset(direction === 'left' ? 'next' : 'previous')}
+      />
     {:else if viewerKind === 'VideoViewer'}
       <VideoViewer
         assetId={asset.id}

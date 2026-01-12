@@ -156,6 +156,11 @@ export function imageLoader(
   const handleElementCreated = (img: HTMLImageElement) => {
     if (img) {
       node.append(img);
+      // const a = document.createElement('p');
+
+      // a.classList.add('absolute', 'h-full', 'w-full', 'top-0');
+      // a.textContent = img.src;
+      // node.append(a);
       currentCallbacks.onElementCreated?.(img);
     }
   };

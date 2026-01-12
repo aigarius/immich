@@ -9,10 +9,25 @@ export const zoomImageAction = (node: HTMLElement, options?: { disabled?: boolea
     initialState: state,
   });
 
+  let isUpdatingFromInstance = false;
+  let isUpdatingFromStore = false;
+
   const unsubscribes = [
-    photoZoomState.subscribe((state) => zoomInstance.setState(state)),
+    photoZoomState.subscribe((state) => {
+      if (isUpdatingFromInstance || options?.disabled) {
+        return;
+      }
+      isUpdatingFromStore = true;
+      zoomInstance.setState(state);
+      isUpdatingFromStore = false;
+    }),
     zoomInstance.subscribe(({ state }) => {
+      if (isUpdatingFromStore || options?.disabled) {
+        return;
+      }
+      isUpdatingFromInstance = true;
       photoZoomState.set(state);
+      isUpdatingFromInstance = false;
     }),
   ];
 
