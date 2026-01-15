@@ -1,13 +1,9 @@
 import { getAssetUrl } from '$lib/utils';
-import { cancelImageUrl, preloadImageUrl } from '$lib/utils/sw-messaging';
+import { cancelImageUrl } from '$lib/utils/sw-messaging';
 import { AssetTypeEnum, type AssetResponseDto } from '@immich/sdk';
 
 class PreloadManager {
   preload(asset: AssetResponseDto | undefined) {
-    if (globalThis.isSecureContext) {
-      preloadImageUrl(getAssetUrl({ asset }));
-      return;
-    }
     if (!asset || asset.type !== AssetTypeEnum.Image) {
       return;
     }

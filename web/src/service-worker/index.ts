@@ -3,8 +3,7 @@
 /// <reference lib="esnext" />
 /// <reference lib="webworker" />
 import { installBroadcastChannelListener } from './broadcast-channel';
-import { prune } from './cache';
-import { handleRequest } from './request';
+import { handleFetch as handleAssetFetch } from './request';
 
 const ASSET_REQUEST_REGEX = /^\/api\/assets\/[a-f0-9-]+\/(original|thumbnail)/;
 
@@ -12,12 +11,10 @@ const sw = globalThis as unknown as ServiceWorkerGlobalScope;
 
 const handleActivate = (event: ExtendableEvent) => {
   event.waitUntil(sw.clients.claim());
-  event.waitUntil(prune());
 };
 
 const handleInstall = (event: ExtendableEvent) => {
   event.waitUntil(sw.skipWaiting());
-  // do not preload app resources
 };
 
 const handleFetch = (event: FetchEvent): void => {
@@ -28,7 +25,7 @@ const handleFetch = (event: FetchEvent): void => {
   // Cache requests for thumbnails
   const url = new URL(event.request.url);
   if (url.origin === self.location.origin && ASSET_REQUEST_REGEX.test(url.pathname)) {
-    event.respondWith(handleRequest(event.request));
+    event.respondWith(handleAssetFetch(event.request));
     return;
   }
 };
