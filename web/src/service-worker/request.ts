@@ -1,3 +1,8 @@
+/// <reference types="@sveltejs/kit" />
+/// <reference no-default-lib="true"/>
+/// <reference lib="esnext" />
+/// <reference lib="webworker" />
+
 type PendingRequest = {
   controller: AbortController;
   promise: Promise<Response>;
@@ -8,7 +13,7 @@ const pendingRequests = new Map<string, PendingRequest>();
 
 const getRequestKey = (request: URL | Request): string => (request instanceof URL ? request.href : request.url);
 
-const CANCELED_MESSAGE = 'Canceled - this is normal';
+const CANCELATION_MESSAGE = 'Request canceled by application';
 const CLEANUP_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 export const handleFetch = (request: URL | Request): Promise<Response> => {
@@ -16,16 +21,22 @@ export const handleFetch = (request: URL | Request): Promise<Response> => {
   const existing = pendingRequests.get(requestKey);
 
   if (existing) {
-    // Clone the response from the shared promise to avoid "Response is disturbed or locked" errors
+    // Clone the response since response bodies can only be read once
+    // Each caller gets an independent clone they can consume
     return existing.promise.then((response) => response.clone());
   }
 
-  const controller = new AbortController();
+  const pendingRequest: PendingRequest = {
+    controller: new AbortController(),
+    promise: undefined as unknown as Promise<Response>,
+  };
+  pendingRequests.set(requestKey, pendingRequest);
+
   // NOTE: fetch returns after headers received, not the body
-  const promise = fetch(request, { signal: controller.signal })
+  pendingRequest.promise = fetch(request, { signal: pendingRequest.controller.signal })
     .catch((error: unknown) => {
       const standardError = error instanceof Error ? error : new Error(String(error));
-      if (standardError.name === 'AbortError' || standardError.message === CANCELED_MESSAGE) {
+      if (standardError.name === 'AbortError' || standardError.message === CANCELATION_MESSAGE) {
         // dummy response avoids network errors in the console for these requests
         return new Response(undefined, { status: 204 });
       }
@@ -36,20 +47,11 @@ export const handleFetch = (request: URL | Request): Promise<Response> => {
       const cleanupTimeout = setTimeout(() => {
         pendingRequests.delete(requestKey);
       }, CLEANUP_TIMEOUT_MS);
-
-      const pendingRequest = pendingRequests.get(requestKey);
-      if (pendingRequest) {
-        pendingRequest.cleanupTimeout = cleanupTimeout;
-      }
+      pendingRequest.cleanupTimeout = cleanupTimeout;
     });
 
-  pendingRequests.set(requestKey, {
-    controller,
-    promise,
-  });
-
-  // Clone for the first caller, so the promise retains the unconsumed original response for future callers
-  return promise.then((response) => response.clone());
+  // Clone for the first caller to keep the original response unconsumed for future callers
+  return pendingRequest.promise.then((response) => response.clone());
 };
 
 export const handleCancel = (url: URL) => {
@@ -57,11 +59,10 @@ export const handleCancel = (url: URL) => {
 
   const pendingRequest = pendingRequests.get(requestKey);
   if (pendingRequest) {
-    pendingRequest.controller.abort(CANCELED_MESSAGE);
+    pendingRequest.controller.abort(CANCELATION_MESSAGE);
     if (pendingRequest.cleanupTimeout) {
       clearTimeout(pendingRequest.cleanupTimeout);
     }
     pendingRequests.delete(requestKey);
-    return;
   }
 };

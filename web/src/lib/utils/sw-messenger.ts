@@ -1,5 +1,5 @@
 /**
- * Low-level protocol for communicating with the service worker via BroadcastChannel.
+ * Low-level protocol for communicating with the service worker via postMessage.
  *
  * Protocol:
  * 1. Main thread sends request: { type: string, requestId: string, ...data }
@@ -16,19 +16,22 @@ interface PendingRequest {
 }
 
 export class ServiceWorkerMessenger {
-  readonly #broadcast: BroadcastChannel;
   readonly #pendingRequests = new Map<string, PendingRequest>();
   readonly #ackTimeoutMs: number;
   #requestCounter = 0;
   #onTimeout?: (type: string, data: Record<string, unknown>) => void;
+  #messageHandler?: (event: MessageEvent) => void;
 
-  constructor(channelName: string, ackTimeoutMs = 5000) {
-    this.#broadcast = new BroadcastChannel(channelName);
+  constructor(ackTimeoutMs = 5000) {
     this.#ackTimeoutMs = ackTimeoutMs;
 
-    this.#broadcast.addEventListener('message', (event) => {
-      this.#handleMessage(event.data);
-    });
+    // Listen for messages from the service worker
+    if ('serviceWorker' in navigator) {
+      this.#messageHandler = (event) => {
+        this.#handleMessage(event.data);
+      };
+      navigator.serviceWorker.addEventListener('message', this.#messageHandler);
+    }
   }
 
   #handleMessage(data: unknown) {
@@ -94,7 +97,7 @@ export class ServiceWorkerMessenger {
           if (waitForResponse) {
             reject(new Error(`Service worker did not acknowledge ${type} request`));
           } else {
-            pending.resolveAck();
+            resolve(undefined as T);
           }
         }
       }, this.#ackTimeoutMs);
@@ -107,7 +110,10 @@ export class ServiceWorkerMessenger {
         ackReceived: false,
       });
 
-      this.#broadcast.postMessage({
+      // Send message to the active service worker
+      // Feature detection is done in constructor and at call sites (sw-messaging.ts:isValidSwContext)
+      // eslint-disable-next-line compat/compat
+      navigator.serviceWorker.controller?.postMessage({
         type,
         requestId,
         ...data,
@@ -120,7 +126,7 @@ export class ServiceWorkerMessenger {
   /**
    * Send a one-way message to the service worker.
    * Returns a promise that resolves after the service worker acknowledges receipt.
-   * Rejects if no ack is received within the timeout period.
+   * Resolves even if no ack is received within the timeout period.
    */
   send(type: string, data: Record<string, unknown>): Promise<void> {
     return this.#sendInternal<void>(type, data, false);
@@ -135,9 +141,17 @@ export class ServiceWorkerMessenger {
   }
 
   /**
-   * Close the broadcast channel
+   * Clean up pending requests and remove event listener
    */
   close(): void {
-    this.#broadcast.close();
+    for (const pending of this.#pendingRequests.values()) {
+      clearTimeout(pending.ackTimeout);
+    }
+    this.#pendingRequests.clear();
+
+    if (this.#messageHandler && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.removeEventListener('message', this.#messageHandler);
+      this.#messageHandler = undefined;
+    }
   }
 }

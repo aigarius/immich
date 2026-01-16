@@ -1,6 +1,6 @@
 import { ServiceWorkerMessenger } from './sw-messenger';
 
-const messenger = new ServiceWorkerMessenger('immich');
+const messenger = new ServiceWorkerMessenger();
 
 let isServiceWorkerEnabled = true;
 
