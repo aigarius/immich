@@ -11,7 +11,7 @@
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import { editManager, EditToolType } from '$lib/managers/edit/edit-manager.svelte';
-  import { preloadManager } from '$lib/managers/PreloadManager.svelte';
+  import { imageManager } from '$lib/managers/ImageManager.svelte';
   import { Route } from '$lib/route';
   import { assetViewingStore } from '$lib/stores/asset-viewing.store';
   import { ocrManager } from '$lib/stores/ocr.svelte';
@@ -134,7 +134,7 @@
     }
 
     untrack(() => {
-      preloadManager.preload(stack?.assets[1]);
+      imageManager.preload(stack?.assets[1]);
     });
   };
 
@@ -219,7 +219,7 @@
     }
 
     e?.stopPropagation();
-    preloadManager.cancel(asset);
+    imageManager.cancel(asset);
     if (tracker.isActive()) {
       return;
     }
@@ -383,8 +383,8 @@
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     asset;
     untrack(() => handlePromiseError(refresh()));
-    preloadManager.preload(cursor.nextAsset);
-    preloadManager.preload(cursor.previousAsset);
+    imageManager.preload(cursor.nextAsset);
+    imageManager.preload(cursor.previousAsset);
   });
 
   const onAssetReplace = async ({ oldAssetId, newAssetId }: { oldAssetId: string; newAssetId: string }) => {
